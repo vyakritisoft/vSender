@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+dist/
+*.crx
+*.pem
+extension.crx
+extension.pem
+graphify-out/cache/
