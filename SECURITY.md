@@ -13,7 +13,7 @@ vSender is a Chrome Extension built on Manifest V3. We provide security updates 
 
 If you discover a security vulnerability within this project, please **do not open a public issue**. Instead, please report it privately:
 
-- **Email**: [security@vyakritisoft.com](mailto:security@vyakritisoft.com)
+- **Email**: [dev@vyakriti.com](mailto:dev@vyakriti.com)
 - **Response Time**: We aim to acknowledge reports within 48 hours and provide a resolution or status update within 7 days.
 
 ## Data Privacy & Security
