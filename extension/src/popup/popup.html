@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vSender</title>
+  <!-- SheetJS must load BEFORE the ES module so XLSX is globally available -->
+  <script src="../../libs/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="app" id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="header-icon">
+          <img src="../../icons/icon32.png" alt="vSender Logo">
+        </div>
+        <div>
+          <h1 class="header-title">vSender</h1>
+          <span class="header-version">v1.1.3</span>
+        </div>
+      </div>
+      <div class="header-status" id="connectionStatus">
+        <span class="status-dot status-dot--offline"></span>
+        <span class="status-text">Checking...</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs">
+      <button class="tab tab--active" data-tab="setup" id="tabSetup">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
+          <path d="M7 12h2v5H7zm4-3h2v8h-2zm4-3h2v11h-2z" />
+        </svg>
+        Setup
+      </button>
+      <button class="tab" data-tab="progress" id="tabProgress">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
+        </svg>
+        Progress
+      </button>
+      <button class="tab" data-tab="logs" id="tabLogs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z" />
+        </svg>
+        Logs
+      </button>
+      <button class="tab" data-tab="settings" id="tabSettings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+        </svg>
+        Settings
+      </button>
+    </nav>
+
+    <!-- Tab: Setup -->
+    <section class="panel panel--active" id="panelSetup">
+      <!-- Step 1: File Upload -->
+      <div class="card" id="stepUpload">
+        <div class="card-header">
+          <span class="step-badge">1</span>
+          <h2 class="card-title">Contact Source</h2>
+        </div>
+
+
+        <div class="source-panel source-panel--active" id="sourcePanelFile" data-source-panel="file">
+          <div class="form-group" id="savedDatasetsGroup" style="margin-bottom: 12px; display: none;">
+            <label class="form-label" style="font-weight: 500; margin-bottom: 4px; display: block;">Saved
+              Contacts</label>
+            <div style="display: flex; gap: 8px;">
+              <select class="form-select" id="savedDatasetsSelect" style="flex: 1;">
+                <option value="">-- Upload New Contacts... --</option>
+              </select>
+              <button class="btn btn--danger btn--sm" id="btnDeleteDataset" title="Delete Dataset"
+                style="display: none; padding: 0 10px;">✕</button>
+            </div>
+            <div style="margin-top: 8px; font-size: 13px; color: #64748b; text-align: center;">or</div>
+          </div>
+          <div class="upload-zone" id="uploadZone">
+            <img src="../../icons/icon128.png" alt="vSender Logo">
+            <p class="upload-text">Drop CSV/XLSX file here or click to browse</p>
+            <p class="upload-hint">Supports .csv, .xlsx, .xls files</p>
+            <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
+          </div>
+          <div class="file-info" id="fileInfo" style="display:none;">
+            <div class="file-info-row">
+              <span class="file-name" id="fileName"></span>
+              <button class="btn btn--ghost btn--sm" id="removeFile" type="button">✕</button>
+            </div>
+            <div class="file-stats" id="fileStats"></div>
+          </div>
+        </div>
+
+
+
+        <div class="validation-summary" id="validationSummary" style="display:none;"></div>
+      </div>
+
+      <!-- Step 2: Field Mapping -->
+      <div class="card" id="stepMapping" style="display:none;">
+        <div class="card-header">
+          <span class="step-badge">2</span>
+          <h2 class="card-title">Map Fields</h2>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone Number Column <span class="required">*</span></label>
+          <select class="form-select" id="phoneColumn"></select>
+        </div>
+        <div id="variableMappings"></div>
+        <button class="btn btn--outline btn--sm" id="addMapping">+ Add Variable Mapping</button>
+      </div>
+
+      <!-- Step 3: Message Template -->
+      <div class="card" id="stepMessage" style="display:none;">
+        <div class="card-header">
+          <span class="step-badge">3</span>
+          <h2 class="card-title">Compose Message</h2>
+        </div>
+        <div class="form-group" id="templateEditorGroup">
+          <label class="form-label">Message Template</label>
+          <textarea class="form-textarea" id="messageTemplate" rows="5"
+            placeholder="Hi {{name}}, this is a message from our team. Your code is {{code|N/A}}."></textarea>
+          <p class="form-hint">Use {{variable}} for personalization. Add fallback with {{variable|default}}.</p>
+        </div>
+        <div class="template-vars" id="templateVars"></div>
+        <div class="preview-box" id="previewBox" style="display:none;">
+          <div class="preview-label">Preview (first contact):</div>
+          <div class="preview-content" id="previewContent"></div>
+        </div>
+      </div>
+
+
+
+      <!-- Step 4: Delay Configuration -->
+      <div class="card" id="stepDelay" style="display:none;">
+        <div class="card-header">
+          <span class="step-badge">4</span>
+          <h2 class="card-title">Delivery Settings</h2>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Delay Between Messages</label>
+            <div class="range-group">
+              <input type="range" class="form-range" id="delayRange" min="3" max="30" value="5">
+              <span class="range-value" id="delayValue">5s</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Session Limit</label>
+            <input type="number" class="form-input" id="sessionCap" value="50" min="10" max="200">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label switch-label">
+            <input type="checkbox" id="humanTyping" class="form-checkbox">
+            <span class="switch-slider"></span>
+            Simulate human typing
+          </label>
+        </div>
+      </div>
+
+      <!-- Launch Button -->
+      <div class="launch-section" id="launchSection" style="display:none;">
+        <div class="launch-summary" id="launchSummary"></div>
+        
+        <div class="schedule-section" style="margin-bottom: 16px; background: var(--bg-card); border: 1px solid var(--border-light); padding: 12px; border-radius: 8px;">
+          <div class="schedule-options" style="display: flex; gap: 16px;">
+            <label class="form-label" style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 0;">
+              <input type="radio" name="scheduleMode" value="now" checked> Send Now
+            </label>
+            <label class="form-label" style="display:flex; align-items:center; gap:6px; cursor:pointer; margin-bottom: 0;">
+              <input type="radio" name="scheduleMode" value="later"> Schedule for Later
+            </label>
+          </div>
+          <div class="form-group" id="scheduleDatetimeGroup" style="display:none; margin-top:12px; margin-bottom:0;">
+            <input type="datetime-local" class="form-input" id="scheduleDatetime">
+            <p class="form-hint" style="margin-top: 4px; margin-bottom: 0;">Note: Browser must be open at this time.</p>
+          </div>
+        </div>
+
+        <button class="btn btn--primary btn--lg btn--full" id="btnStart">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          <span>Start Sending</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Tab: Progress -->
+    <section class="panel" id="panelProgress">
+      <div class="card">
+        <div class="progress-header">
+          <div class="progress-stats" id="progressStats">
+            <div class="stat">
+              <span class="stat-value" id="statSent">0</span>
+              <span class="stat-label">Sent</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value stat-value--warning" id="statFailed">0</span>
+              <span class="stat-label">Failed</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value stat-value--muted" id="statPending">0</span>
+              <span class="stat-label">Pending</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value" id="statTotal">0</span>
+              <span class="stat-label">Total</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+        </div>
+        <div class="progress-percent" id="progressPercent">0%</div>
+
+        <!-- Controls -->
+        <div class="controls">
+          <button class="btn btn--success" id="btnResume" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Resume
+          </button>
+          <button class="btn btn--warning" id="btnPause" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </svg>
+            Pause
+          </button>
+          <button class="btn btn--danger" id="btnStop" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+              <path d="M6 6h12v12H6z" />
+            </svg>
+            Stop
+          </button>
+        </div>
+      </div>
+
+      <!-- Queue Items -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Message Queue</h2>
+          <button class="btn btn--ghost btn--sm" id="btnExportResults">Export CSV</button>
+        </div>
+        <div class="queue-list" id="queueList">
+          <div class="empty-state">No messages in queue</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Logs -->
+    <section class="panel" id="panelLogs">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Activity Log</h2>
+          <div class="card-actions">
+            <button class="btn btn--ghost btn--sm" id="btnExportLogs">Export</button>
+            <button class="btn btn--ghost btn--sm" id="btnClearLogs">Clear</button>
+          </div>
+        </div>
+        <div class="log-list" id="logList">
+          <div class="empty-state">No logs yet</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Settings -->
+    <section class="panel" id="panelSettings">
+      <div class="card">
+        <h2 class="card-title">Rate Limiting</h2>
+        <div class="form-group">
+          <label class="form-label">Base Delay (seconds)</label>
+          <input type="number" class="form-input" id="settingDelay" value="5" min="3" max="60">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Jitter (±%)</label>
+          <input type="number" class="form-input" id="settingJitter" value="30" min="10" max="50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Session Cap</label>
+          <input type="number" class="form-input" id="settingSessionCap" value="50" min="10" max="200">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cooldown (minutes)</label>
+          <input type="number" class="form-input" id="settingCooldown" value="5" min="1" max="30">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Default Country Code</label>
+          <input type="text" class="form-input" id="settingDefaultCountryCode" value="" inputmode="numeric"
+            placeholder="e.g. 1 or 971">
+          <p class="form-hint">Used only for local-format numbers without a leading + or 00.</p>
+        </div>
+        <button class="btn btn--primary" id="btnSaveSettings">Save Settings</button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Data</h2>
+        <button class="btn btn--danger btn--full" id="btnClearAll">Clear All Data</button>
+      </div>
+
+      <div class="card about-card">
+        <h2 class="card-title">About</h2>
+        <p class="about-text">vSender v1.1.3</p>
+        <p class="about-text about-text--muted">Send personalized messages on WhatsApp Web with CSV upload, smart
+          delays, and full control.</p>
+        <p class="about-text about-text--muted">⚠️ Use responsibly. Follow WhatsApp's Terms of Service.</p>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+
+</html>

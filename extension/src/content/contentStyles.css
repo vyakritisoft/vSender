@@ -1,0 +1,5 @@
+/* Content script injected styles */
+
+#wa-bulk-sender-btn button:active {
+  transform: scale(0.95) !important;
+}
