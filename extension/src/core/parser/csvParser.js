@@ -15,7 +15,7 @@
  */
 export async function parseFile(file) {
   const extension = file.name.split('.').pop().toLowerCase();
-  
+
   if (extension === 'csv' || extension === 'txt') {
     return parseCSV(file);
   } else if (extension === 'xlsx' || extension === 'xls') {
@@ -33,7 +33,7 @@ export async function parseFile(file) {
 function parseCSV(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       try {
         const text = e.target.result;
@@ -44,7 +44,7 @@ function parseCSV(file) {
         reject(new Error(message));
       }
     };
-    
+
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsText(file);
   });
@@ -69,7 +69,7 @@ function parseCSVText(text) {
   for (let i = 1; i < records.length; i++) {
     try {
       const values = records[i];
-      
+
       if (values.length === 0 || (values.length === 1 && !values[0])) {
         continue; // Skip empty rows
       }
@@ -78,7 +78,7 @@ function parseCSVText(text) {
       headers.forEach((header, idx) => {
         row[header.trim()] = (values[idx] || '').trim();
       });
-      
+
       rows.push({ rowIndex: i + 1, data: row });
     } catch (err) {
       errors.push({ row: i + 1, error: err.message });
@@ -115,7 +115,7 @@ function parseCSVRecords(text) {
 
   for (let i = 0; i < normalized.length; i++) {
     const char = normalized[i];
-    
+
     if (char === '"') {
       if (inQuotes && normalized[i + 1] === '"') {
         currentField += '"';
@@ -136,7 +136,7 @@ function parseCSVRecords(text) {
       currentField += char;
     }
   }
-  
+
   if (inQuotes) {
     throw new Error('CSV parsing error: unmatched quote in file');
   }
@@ -157,7 +157,7 @@ function parseCSVRecords(text) {
 async function parseXLSX(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       try {
         // SheetJS (XLSX) must be loaded via libs/
@@ -171,7 +171,7 @@ async function parseXLSX(file) {
         const data = new Uint8Array(e.target.result);
         const workbook = xlsx.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
+        const jsonData = xlsx.utils.sheet_to_json(firstSheet, { header: 1, raw: false });
 
         if (jsonData.length < 2) {
           reject(new Error('XLSX file must have at least a header row and one data row'));
@@ -272,7 +272,7 @@ export function validateAndMap(parsedData, fieldMapping, defaultCountryCode = ''
   const seenPhones = new Set();
 
   const phoneField = fieldMapping.phone;
-  
+
   if (!phoneField) {
     throw new Error('Phone field mapping is required');
   }
