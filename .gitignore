@@ -8,4 +8,3 @@ extension.pem
 graphify-out/cache/
 coverage/
 *.zip
-package-lock.json
