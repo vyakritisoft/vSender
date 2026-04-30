@@ -55,6 +55,8 @@ function parseCSV(file) {
  * @param {string} text - Raw CSV content
  * @returns {Object} { headers, rows, errors }
  */
+const ROW_CAP = 2000;
+
 function parseCSVText(text) {
   const records = parseCSVRecords(text);
 
@@ -62,11 +64,17 @@ function parseCSVText(text) {
     throw new Error('CSV file must have at least a header row and one data row');
   }
 
-  const headers = records[0];
+  const totalRecords = records.length - 1;
+  const recordsToProcess = records.slice(0, ROW_CAP + 1);
+  const headers = recordsToProcess[0];
   const rows = [];
   const errors = [];
 
-  for (let i = 1; i < records.length; i++) {
+  if (totalRecords > ROW_CAP) {
+    errors.push({ row: ROW_CAP + 1, error: `Row limit reached. Only the first ${ROW_CAP} contacts were imported.` });
+  }
+
+  for (let i = 1; i < recordsToProcess.length; i++) {
     try {
       const values = records[i];
 
@@ -178,13 +186,19 @@ async function parseXLSX(file) {
           return;
         }
 
-        const headers = jsonData[0].map(h => String(h || '').trim());
+        const totalRecords = jsonData.length - 1;
+        const dataToProcess = jsonData.slice(0, ROW_CAP + 1);
+        const headers = dataToProcess[0].map(h => String(h || '').trim());
         const rows = [];
         const errors = [];
 
-        for (let i = 1; i < jsonData.length; i++) {
+        if (totalRecords > ROW_CAP) {
+          errors.push({ row: ROW_CAP + 1, error: `Row limit reached. Only the first ${ROW_CAP} contacts were imported.` });
+        }
+
+        for (let i = 1; i < dataToProcess.length; i++) {
           try {
-            const values = jsonData[i];
+            const values = dataToProcess[i];
             if (!values || values.length === 0) continue;
 
             const row = {};

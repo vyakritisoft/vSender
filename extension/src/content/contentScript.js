@@ -26,13 +26,6 @@ if (window.waBulkSenderInjected) {
     sendButton: '[data-testid="compose-btn-send"], footer button[aria-label="Send"], footer span[data-icon="send"]',
 
     // Attachments — selector order: testid first, then aria-label, avoid over-broad icons
-    attachButton: '[data-testid="clip-btn"], [data-testid="attach-media"], button[aria-label="Attach"], span[data-icon="clip"]',
-    fileInput: 'input[type="file"]',
-    mediaPreview: '[data-testid="media-caption-input-container"], [data-testid="media-editor"]',
-    mediaCaptionInput: '[data-testid="media-caption-input"], div[role="textbox"][aria-label*="caption"], div[role="textbox"][aria-label*="Add a caption"]',
-    mediaSendButton: '[data-testid="send-media"], [data-testid="media-send-btn"]',
-
-    // Chat panel
     chatPanel: '#main',
     chatHeader: '[data-testid="conversation-header"], header.pane-chat-header',
     chatContactName: '[data-testid="conversation-info-header-chat-title"], #main header span[dir="auto"][title]',
@@ -169,24 +162,13 @@ if (window.waBulkSenderInjected) {
    * @param {string} expectedText
    * @returns {boolean}
    */
-  function verifyInputHasText(element, expectedText) {
-    const currentText = (element.textContent || element.innerText || '').trim();
-    // Also check innerHTML in case Lexical wraps in <p>/<span> and textContent is delayed
-    const currentHtml = (element.innerHTML || '').replace(/<[^>]+>/g, ' ').trim();
-    // Lexical strips newlines or converts them to <br>. Strip spaces for robust comparison
-    const strippedExpected = expectedText.replace(/\s+/g, '').substring(0, 30);
-    const strippedCurrent = currentText.replace(/\s+/g, '');
-    const strippedHtml = currentHtml.replace(/\s+/g, '');
-    return strippedCurrent.includes(strippedExpected) || strippedHtml.includes(strippedExpected);
-  }
-
   /**
    * Set text in a contenteditable element reliably for WhatsApp Web.
    * @param {Element} element - The contenteditable element
    * @param {string} text - Text to set
-   * @returns {boolean} Whether text was successfully set
+   * @returns {Promise<boolean>} Whether text was successfully set
    */
-  function setInputText(element, text) {
+  async function setInputText(element, text) {
     element.focus();
 
     // Clear any existing content first
@@ -205,30 +187,19 @@ if (window.waBulkSenderInjected) {
       }
     }
 
-    // Fire a generic input event to trigger React/Lexical's change detection 
-    // without appending extra text payload (insertText already triggers its own input event)
     element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
 
-    return verifyInputHasText(element, text);
+    return !!(await waitForCondition(() => verifyInputHasText(element, text), 1500, 100));
   }
 
-  /**
-   * Simulate human-like typing character by character.
-   * @param {Element} element - The contenteditable input
-   * @param {string} text - Text to type
-   * @param {number} charDelay - Delay between characters in ms
-   */
   async function simulateTyping(element, text, charDelay = 50) {
     element.focus();
-
-    // Clear existing
     document.execCommand('selectAll', false, null);
     document.execCommand('delete', false, null);
 
     for (const char of text) {
       if (char === '\n') {
-        // WhatsApp Lexical editor resets nodes if insertLineBreak is forced; 
-        // simulate Shift+Enter instead
         element.dispatchEvent(new KeyboardEvent('keydown', {
           bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13, shiftKey: true
         }));
@@ -236,31 +207,18 @@ if (window.waBulkSenderInjected) {
         document.execCommand('insertText', false, char);
       }
       element.dispatchEvent(new InputEvent('input', { bubbles: true }));
-
-      // Random delay variation (±30%)
       const jitter = charDelay * 0.3;
       const delay = charDelay + (Math.random() * 2 - 1) * jitter;
       await sleep(Math.max(10, delay));
     }
   }
 
-
   async function handleOpenChat(phone, afterNavigation = false) {
-    // Always called with afterNavigation=true since we navigate directly via URL.
-    // Just wait for the message input to appear (and check for invalid-number popup).
-    // We don't need header matching – the URL /send?phone=XXXX is authoritative.
-
     const result = await waitForCondition(() => {
-      // Check for invalid number popup first
       const invalid = dismissInvalidNumberPopup();
       if (invalid) return invalid;
-
-      // Accept as soon as the compose input is visible — means WA opened the right chat
       const input = document.querySelector(WASelectors.messageInput);
       if (!input) return null;
-
-      // Extra guard: if a dialog error is visible (not an invalid-number popup),
-      // something went wrong. We still let the caller handle it gracefully.
       const header = document.querySelector(WASelectors.chatContactName)?.textContent?.trim() || '';
       return { success: true, method: 'navigation', chatName: header || null };
     }, 15000, 300);
@@ -271,208 +229,10 @@ if (window.waBulkSenderInjected) {
     return result;
   }
 
-  function dataURLtoFile(dataUrl, fileName, mimeType) {
-    const byteString = atob(dataUrl.split(',')[1]);
-    const arrayBuffer = new ArrayBuffer(byteString.length);
-    const uint8Array = new Uint8Array(arrayBuffer);
-    for (let i = 0; i < byteString.length; i++) {
-      uint8Array[i] = byteString.charCodeAt(i);
-    }
-    return new File([arrayBuffer], fileName, { type: mimeType });
-  }
-
-  /**
-   * Find a hidden file input that matches the given MIME type.
-   * Tries the most specific match first, then falls back to any file input.
-   */
-  function findFileInputForMime(mimeType) {
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
-    if (!inputs.length) return null;
-
-    const isImage = mimeType.startsWith('image/') || mimeType.startsWith('video/');
-
-    // Prefer an input whose accept attribute matches our type
-    const best = inputs.find(inp => {
-      const accept = (inp.getAttribute('accept') || '').toLowerCase();
-      if (!accept) return false;
-      if (isImage) return accept.includes('image') || accept.includes('video');
-      // For documents: pdf, audio, etc. – accept="*" or specific types
-      return accept.includes(mimeType.toLowerCase()) ||
-        accept.includes('application') ||
-        accept === '*' ||
-        accept.includes('/*');
-    });
-    return best || inputs[inputs.length - 1];
-  }
-
-  async function sendMediaMessage(mediaDataUrl, fileName, mimeType, caption = '') {
-    dbg('sendMediaMessage – mimeType:', mimeType, 'fileName:', fileName);
-
-    // ── STEP 1: Ensure the file input is exposed ─────────────────────────────
-    // WhatsApp Web keeps hidden file inputs in the DOM. We try to find one first;
-    // if not present we click the attach button to reveal the menu / inputs.
-
-    let fileInput = findFileInputForMime(mimeType);
-
-    if (!fileInput) {
-      // Click the attach (clip) button to open the attach menu
-      const attachBtn = document.querySelector(WASelectors.attachButton);
-      if (!attachBtn) {
-        // Last resort: try a more aggressive search for any attach-like button
-        const fallbackBtn = document.querySelector('button[aria-label*="ttach"], span[data-icon="clip"]')?.closest('button');
-        if (!fallbackBtn) return { success: false, error: 'Attach button not found in DOM' };
-        fallbackBtn.click();
-      } else {
-        // Click the button itself or its nearest button ancestor
-        const clickTarget = attachBtn.closest('button') || attachBtn.closest('[role="button"]') || attachBtn;
-        clickTarget.click();
-      }
-
-      await sleep(800);
-
-      // After clicking, search for file input again
-      fileInput = await waitForCondition(() => findFileInputForMime(mimeType), 5000, 200);
-
-      if (!fileInput) {
-        // Close any open menu and report failure
-        document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape', keyCode: 27 }));
-        return { success: false, error: 'File input not found after clicking attach button' };
-      }
-    }
-
-    // ── STEP 2: Set the file on the input ────────────────────────────────────
-    const file = dataURLtoFile(mediaDataUrl, fileName, mimeType);
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-
-    try {
-      fileInput.files = dataTransfer.files;
-    } catch (e) {
-      dbg('Could not assign files directly:', e);
-    }
-
-    // Dispatch both change and input events so React/Lexical picks up the file
-    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-    fileInput.dispatchEvent(new Event('input', { bubbles: true }));
-    await sleep(500);
-
-    // ── STEP 3: Wait for the media preview panel ─────────────────────────────
-    const preview = await waitForElement(WASelectors.mediaPreview, 20000);
-    if (!preview) {
-      return { success: false, error: 'Media preview did not appear – file may have been rejected' };
-    }
-
-    dbg('Media preview appeared');
-    await sleep(500);
-
-    // ── STEP 4: Insert caption if provided ───────────────────────────────────
-    if (caption) {
-      const captionInput = await waitForElement(WASelectors.mediaCaptionInput, 5000);
-      if (captionInput) {
-        setInputText(captionInput, caption);
-        await sleep(400);
-      } else {
-        dbg('Caption input not found; sending without caption');
-      }
-    }
-
-    // ── STEP 5: Wait for and click the media send button ─────────────────────
-    // In current WA Web the media-editor send button is:
-    //   <div aria-label="Send" role="button" tabindex="0"><span data-icon="send"/></div>
-    // It renders ASYNC after the preview — so we must poll with waitForCondition.
-    // The regular chat send button has data-testid="compose-btn-send" — we must
-    // explicitly exclude it.
-
-    const mediaSend = await waitForCondition(() => {
-      // Ranked selector list — stop at the first match that is NOT the compose button
-      const candidates = [
-        // data-testid variants
-        document.querySelector('[data-testid="send-media"]'),
-        document.querySelector('[data-testid="media-send-btn"]'),
-        // aria-label approach — most reliable in current WA Web
-        ...Array.from(document.querySelectorAll('[aria-label="Send"][role="button"]')),
-        // icon approach — exclude the compose-btn-send wrapper
-        ...Array.from(document.querySelectorAll('[data-icon="send"]')),
-      ];
-
-      for (const el of candidates) {
-        if (!el) continue;
-        // Never click the regular compose send button
-        if (el.closest('[data-testid="compose-btn-send"]')) continue;
-        if (el.getAttribute('data-testid') === 'compose-btn-send') continue;
-        // Must be inside the media editor overlay (not just any part of the page)
-        // The overlay is typically outside #main or inside a fixed-position layer
-        return el;
-      }
-      return null;
-    }, 10000, 300);
-
-    if (!mediaSend) {
-      // Nuclear fallback: press Enter inside the caption/preview area
-      dbg('Send button not found — trying Enter key');
-      const captionOrPreview = document.querySelector(WASelectors.mediaCaptionInput) || preview;
-      captionOrPreview.focus();
-      captionOrPreview.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-      }));
-      await sleep(2000);
-
-      // Check if preview dismissed (= sent successfully)
-      const stillOpen = document.querySelector(WASelectors.mediaPreview);
-      if (stillOpen) {
-        return { success: false, error: 'Media preview still open after Enter key — send may have failed' };
-      }
-      dbg('Media sent via Enter key');
-      return { success: true };
-    }
-
-    // Walk up to the actual clickable element
-    const sendTarget = mediaSend.closest('[role="button"]')
-      || mediaSend.closest('button')
-      || mediaSend.closest('div[tabindex]')
-      || mediaSend;
-
-    dbg('Clicking media send button:', sendTarget.tagName,
-      sendTarget.getAttribute('aria-label'), sendTarget.getAttribute('data-testid'));
-
-    sendTarget.focus();
-    await sleep(150);
-    sendTarget.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-    sendTarget.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-    sendTarget.click();
-
-    // ── VERIFY: wait for preview to disappear (= sent) ────────────────────────
-    const confirmed = await waitForCondition(() => {
-      return !document.querySelector(WASelectors.mediaPreview) ? true : null;
-    }, 6000, 300);
-
-    if (!confirmed) {
-      // Preview still visible — try Enter key as last resort
-      dbg('Preview still open after click — trying Enter key');
-      const captionOrPreview = document.querySelector(WASelectors.mediaCaptionInput) || preview;
-      captionOrPreview.focus();
-      captionOrPreview.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-      }));
-      await sleep(2000);
-
-      const stillOpen = document.querySelector(WASelectors.mediaPreview);
-      if (stillOpen) {
-        return { success: false, error: 'Media preview still visible after all send attempts' };
-      }
-    }
-
-    dbg('Media sent successfully');
-    return { success: true };
-  }
-
   async function sendTextMessage(message, humanTyping = false) {
     const input = await waitForElement(WASelectors.messageInput, 10000);
-    if (!input) {
-      return { success: false, error: 'Message input not found' };
-    }
+    if (!input) return { success: false, error: 'Message input not found' };
 
-    // Ensure the input is focused and ready
     input.click();
     input.focus();
     await sleep(300);
@@ -480,41 +240,45 @@ if (window.waBulkSenderInjected) {
     if (humanTyping) {
       await simulateTyping(input, message, 40);
     } else {
-      const insertSuccess = setInputText(input, message);
-      if (!insertSuccess) {
-        dbg('setInputText returned false; proceeding anyway to see if React catches up.');
-      }
+      const insertSuccess = await setInputText(input, message);
+      if (!insertSuccess) return { success: false, error: 'Message text could not be verified' };
     }
 
-    // Verify text was actually inserted
-    const textEntered = await waitForCondition(() => {
-      return verifyInputHasText(input, message);
-    }, 5000, 100);
-
-    if (!textEntered) {
-      dbg('Text verification failed - input is empty after insertion');
-      return { success: false, error: 'Message text could not be inserted into the compose box' };
-    }
-
-    // Wait for send button to appear (it only shows when text is present)
     const sendBtn = await waitForElement(WASelectors.sendButton, 8000);
-    if (!sendBtn) {
-      return { success: false, error: 'Send button not found (text may not have been properly registered by WhatsApp)' };
-    }
+    if (!sendBtn) return { success: false, error: 'Send button not found' };
 
-    // Walk up to the actual <button> element – clicking a <span> icon alone
-    // does not reliably trigger WhatsApp's React onClick handler.
     const clickTarget = sendBtn.closest('button') || sendBtn.closest('[role="button"]') || sendBtn;
     clickTarget.click();
     await sleep(1200);
-
-    // Verify message was sent (input should be cleared after send)
-    const postSendText = (input.textContent || '').trim();
-    if (postSendText && verifyInputHasText(input, message)) {
-      dbg('Message may not have been sent - input still contains text');
-    }
-
     return { success: true };
+  }
+
+  function verifyInputHasText(element, expectedText) {
+    const currentText = (element.textContent || element.innerText || '').trim();
+    const currentHtml = (element.innerHTML || '').replace(/<[^>]+>/g, ' ').trim();
+    const strippedExpected = expectedText.replace(/\s+/g, '').substring(0, 30);
+    const strippedCurrent = currentText.replace(/\s+/g, '');
+    const strippedHtml = currentHtml.replace(/\s+/g, '');
+    const found = strippedCurrent.includes(strippedExpected) || strippedHtml.includes(strippedExpected);
+    if (!found) {
+      dbg('verifyInputHasText check:', {
+        expected: strippedExpected,
+        current: strippedCurrent.substring(0, 50),
+        html: strippedHtml.substring(0, 50)
+      });
+    }
+    return found;
+  }
+
+  async function handleMessage(message) {
+    const { type, payload = {} } = message;
+    switch (type) {
+      case 'CHECK_READY': return { ready: await isWhatsAppReady() };
+      case 'OPEN_CHAT': return handleOpenChat(payload.phone, payload.afterNavigation === true);
+      case 'SEND_IN_CURRENT_CHAT': return sendTextMessage(payload.text || '', payload.humanTyping === true);
+      case 'PING': return { pong: true, timestamp: Date.now() };
+      default: return { success: false, error: `Unknown message type: ${type}` };
+    }
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -523,35 +287,6 @@ if (window.waBulkSenderInjected) {
     });
     return true;
   });
-
-  async function handleMessage(message) {
-    const { type, payload = {} } = message;
-
-    switch (type) {
-      case 'CHECK_READY':
-        return { ready: await isWhatsAppReady() };
-
-      case 'OPEN_CHAT':
-        return handleOpenChat(payload.phone, payload.afterNavigation === true);
-
-      case 'SEND_IN_CURRENT_CHAT':
-        if (payload.media?.dataUrl) {
-          return sendMediaMessage(
-            payload.media.dataUrl,
-            payload.media.fileName,
-            payload.media.mimeType,
-            payload.text || ''
-          );
-        }
-        return sendTextMessage(payload.text || '', payload.humanTyping === true);
-
-      case 'PING':
-        return { pong: true, timestamp: Date.now() };
-
-      default:
-        return { success: false, error: `Unknown message type: ${type}` };
-    }
-  }
 
   function injectBulkSenderButton() {
     if (document.getElementById('wa-bulk-sender-btn')) return;

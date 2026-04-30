@@ -3,9 +3,10 @@
   "name": "vSender",
   "version": "1.1.4",
   "minimum_chrome_version": "116",
-  "description": "Personalize WhatsApp outreach at scale: Upload Excel/CSV files to send custom, one-on-one messages with dynamic variables automatically.",
+  "description": "Personalize WhatsApp outreach at scale: Upload Excel/CSV files to send Personalized messages with dynamic variables automatically.",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "scripting",
     "activeTab",
     "tabs",

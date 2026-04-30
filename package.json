@@ -1,0 +1,32 @@
+{
+  "name": "vsender",
+  "version": "1.1.4",
+  "description": "CI tooling for vSender Chrome Extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:coverage": "node --experimental-vm-modules node_modules/.bin/jest --coverage",
+    "lint": "eslint extension/src --ext .js",
+    "lint:fix": "eslint extension/src --ext .js --fix",
+    "validate:manifest": "node scripts/validateManifest.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.5.0",
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "moduleNameMapper": {
+      "^chrome$": "<rootDir>/__mocks__/chrome.js"
+    },
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ],
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "extension/src/core/**/*.js"
+    ]
+  }
+}

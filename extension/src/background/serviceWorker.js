@@ -173,8 +173,22 @@ async function sleepInterruptible(ms) {
     ticks++;
     // Keep MV3 Service Worker alive during long sleeps
     if (ticks % 10 === 0) {
+      log('info', 'System', 'Heartbeat keep-alive');
       await chrome.storage.local.get('keepalive');
     }
+  }
+}
+
+async function ensureKeepAlive() {
+  if (isProcessing && !queueMeta.isPaused && !queueMeta.isStopped) {
+    // Only create alarm if we are actually processing
+    const alarm = await chrome.alarms.get('WA_KEEP_ALIVE');
+    if (!alarm) {
+      chrome.alarms.create('WA_KEEP_ALIVE', { periodInMinutes: 0.5 });
+      log('info', 'System', 'Keep-alive alarm established');
+    }
+  } else {
+    chrome.alarms.clear('WA_KEEP_ALIVE');
   }
 }
 
@@ -229,15 +243,24 @@ function getQueueSnapshot() {
 }
 
 async function sendMessageToContentScript(tabId, payload) {
-  return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, payload, (response) => {
-      if (chrome.runtime.lastError) {
-        resolve({ success: false, error: chrome.runtime.lastError.message });
-      } else {
-        resolve(response || { success: false, error: 'No response' });
-      }
+  try {
+    return await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, payload, (response) => {
+        if (chrome.runtime.lastError) {
+          const errMsg = chrome.runtime.lastError.message;
+          if (errMsg.includes('Could not establish connection') || errMsg.includes('context invalidated')) {
+            resolve({ success: false, error: 'CONNECTION_LOST', detail: errMsg });
+          } else {
+            resolve({ success: false, error: errMsg });
+          }
+        } else {
+          resolve(response || { success: false, error: 'No response' });
+        }
+      });
     });
-  });
+  } catch (err) {
+    return { success: false, error: 'SEND_MESSAGE_EXCEPTION', detail: err.message };
+  }
 }
 
 async function findWhatsAppTab() {
@@ -381,8 +404,7 @@ async function sendCurrentChatMessage(tabId, item) {
     type: 'SEND_IN_CURRENT_CHAT',
     payload: {
       text: item.message,
-      humanTyping: settings.humanTyping,
-      media: item.media || null
+      humanTyping: settings.humanTyping
     }
   });
 
@@ -407,6 +429,7 @@ async function processQueue() {
 
   isProcessing = true;
   log('info', 'Queue', 'Starting queue processing');
+  await ensureKeepAlive();
   broadcastStatus();
 
   while (!queueMeta.isPaused && !queueMeta.isStopped) {
@@ -505,6 +528,7 @@ async function processQueue() {
   }
 
   isProcessing = false;
+  await ensureKeepAlive();
   log('info', 'Queue', 'Queue processing stopped');
   broadcastStatus();
 }
@@ -520,7 +544,11 @@ function broadcastStatus() {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (contentScriptTabId === tabId) {
+    log('warn', 'System', 'WhatsApp tab was closed manually. Pausing queue.');
     contentScriptTabId = null;
+    queueMeta.isPaused = true;
+    void saveQueue();
+    broadcastStatus();
   }
 });
 
@@ -533,6 +561,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     await saveQueue();
     void processQueue();
     broadcastStatus();
+  } else if (alarm.name === 'WA_KEEP_ALIVE') {
+    if (!isProcessing && !queueMeta.isPaused && !queueMeta.isStopped) {
+      log('info', 'System', 'Re-kicking processor from keep-alive');
+      void processQueue();
+    }
   }
 });
 
@@ -552,7 +585,7 @@ async function handleMessage(message, sender) {
       return { acknowledged: true };
 
     case 'INITIALIZE_QUEUE': {
-      const { contacts, messageTemplate, mediaData } = message.payload;
+      const { contacts, messageTemplate } = message.payload;
       queue = [];
       const seenPhones = new Set();
       let added = 0;
@@ -590,7 +623,6 @@ async function handleMessage(message, sender) {
           variables: contact.variables || {},
           messageTemplate: messageTemplate || '',
           message: renderedMessage,
-          media: mediaData || null,
           status: QueueStatus.PENDING,
           attempts: 0,
           maxAttempts: 3,
@@ -627,7 +659,7 @@ async function handleMessage(message, sender) {
 
     // Atomic alternative: initialise the queue AND start in one round-trip
     case 'START_FRESH': {
-      const { contacts, messageTemplate, mediaData: freshMedia, scheduledAt } = message.payload;
+      const { contacts, messageTemplate, scheduledAt } = message.payload;
       queue = [];
       const seenPhones = new Set();
       let added = 0, skipped = 0;
@@ -658,7 +690,6 @@ async function handleMessage(message, sender) {
           variables: contact.variables || {},
           messageTemplate: messageTemplate || '',
           message: renderedMessage,
-          media: freshMedia || null,
           status: QueueStatus.PENDING,
           attempts: 0,
           maxAttempts: 3,

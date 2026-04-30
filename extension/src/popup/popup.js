@@ -28,10 +28,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   initToast();
   await checkWhatsAppConnection();
   await loadExistingStatus();
-  updateValidationState();
   updateStepVisibility();
   startPolling();
+  initMessageListener();
 });
+
+function initMessageListener() {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'STATUS_UPDATE') {
+      updateProgressUI(message.stats, message.queue);
+      updateLogsUI(message.logs);
+      syncControlState(message.stats);
+    }
+  });
+}
+
+function syncControlState(stats) {
+  if (stats.scheduledAt && stats.scheduledAt > Date.now()) {
+    updateControlStates('scheduled');
+    isActiveSession = true;
+  } else if (stats.isProcessing && !stats.isPaused) {
+    updateControlStates('running');
+    isActiveSession = true;
+  } else if (stats.isPaused) {
+    updateControlStates('paused');
+    isActiveSession = true;
+  } else if (stats.isStopped) {
+    updateControlStates('stopped');
+    isActiveSession = false;
+  } else if (!stats.isProcessing && stats.total > 0 && stats.pending === 0 && stats.retry === 0) {
+    updateControlStates('stopped');
+    isActiveSession = false;
+  }
+}
 
 async function detectViewMode() {
   if (!chrome.tabs?.getCurrent) return 'popup';
@@ -712,7 +741,6 @@ async function startSending() {
     payload: {
       contacts: validationResult.contacts,
       messageTemplate,
-      mediaData: null,
       scheduledAt
     }
   }).catch(err => ({ success: false, error: err.message }));
