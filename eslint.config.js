@@ -23,7 +23,16 @@ export default [
         clearInterval: 'readonly',
         fetch: 'readonly',
         navigator: 'readonly',
-        performance: 'readonly'
+        performance: 'readonly',
+        KeyboardEvent: 'readonly',
+        Event: 'readonly',
+        InputEvent: 'readonly',
+        indexedDB: 'readonly',
+        ResizeObserver: 'readonly',
+        location: 'readonly',
+        Blob: 'readonly',
+        URL: 'readonly',
+        requestAnimationFrame: 'readonly'
       }
     },
     rules: {

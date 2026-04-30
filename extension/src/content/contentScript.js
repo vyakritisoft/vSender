@@ -213,7 +213,7 @@ if (window.waBulkSenderInjected) {
     }
   }
 
-  async function handleOpenChat(phone, afterNavigation = false) {
+  async function handleOpenChat(_phone, _afterNavigation = false) {
     const result = await waitForCondition(() => {
       const invalid = dismissInvalidNumberPopup();
       if (invalid) return invalid;

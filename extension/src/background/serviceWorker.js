@@ -278,7 +278,7 @@ async function ensureContentScriptInjected(tabId) {
     // Quick check: if the content script is already running, it will respond
     const pingResult = await sendMessageToContentScript(tabId, { type: 'PING' });
     if (pingResult.pong) return true;
-  } catch (e) {
+  } catch {
     // Expected if content script isn't loaded
   }
 
@@ -439,7 +439,7 @@ async function processQueue() {
       await saveQueue();
       log('warn', 'RateLimiter',
         `Session cap of ${settings.sessionCap} reached. Sending paused. ` +
-        `Press Resume after a break to continue.`);
+        'Press Resume after a break to continue.');
       broadcastStatus();
       break;
     }

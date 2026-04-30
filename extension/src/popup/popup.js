@@ -1,16 +1,14 @@
 import { parseFile, validateAndMap } from '../core/parser/csvParser.js';
-import { extractVariables, renderTemplate } from '../core/templating/templateEngine.js';
+import { renderTemplate } from '../core/templating/templateEngine.js';
 import { saveDataset, getDatasets, getDatasetById, deleteDataset } from '../core/db/database.js';
 
 let parsedData = null;
 let fieldMapping = { phone: '' };
-let pollingInterval = null;
 let validationResult = null;
-let isActiveSession = false; // true while the SW is processing or paused
 let currentDatasetId = null; // currently loaded dataset ID
 
 const InputMode = { FILE: 'file', MANUAL_ROWS: 'manual_rows' };
-let inputMode = InputMode.FILE;
+const inputMode = InputMode.FILE;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -46,19 +44,14 @@ function initMessageListener() {
 function syncControlState(stats) {
   if (stats.scheduledAt && stats.scheduledAt > Date.now()) {
     updateControlStates('scheduled');
-    isActiveSession = true;
   } else if (stats.isProcessing && !stats.isPaused) {
     updateControlStates('running');
-    isActiveSession = true;
   } else if (stats.isPaused) {
     updateControlStates('paused');
-    isActiveSession = true;
   } else if (stats.isStopped) {
     updateControlStates('stopped');
-    isActiveSession = false;
   } else if (!stats.isProcessing && stats.total > 0 && stats.pending === 0 && stats.retry === 0) {
     updateControlStates('stopped');
-    isActiveSession = false;
   }
 }
 
@@ -69,7 +62,7 @@ async function detectViewMode() {
     return await new Promise((resolve) => {
       chrome.tabs.getCurrent((tab) => resolve(tab ? 'tab' : 'popup'));
     });
-  } catch (err) {
+  } catch {
     return 'popup';
   }
 }
@@ -135,7 +128,7 @@ async function checkWhatsAppConnection() {
       dot.className = 'status-dot status-dot--offline';
       text.textContent = 'Not logged in';
     }
-  } catch (err) {
+  } catch {
     dot.className = 'status-dot status-dot--offline';
     text.textContent = 'Disconnected';
   }
@@ -215,7 +208,7 @@ async function handleDatasetSelect(e) {
 
   try {
     const dataset = await getDatasetById(datasetId);
-    if (!dataset) throw new Error("Dataset not found");
+    if (!dataset) throw new Error('Dataset not found');
 
     currentDatasetId = dataset.id;
     parsedData = dataset.parsedData;
@@ -299,7 +292,7 @@ async function handleFile(file) {
       await refreshDatasetList();
       $('#savedDatasetsSelect').value = currentDatasetId;
     } catch (e) {
-      console.warn("Failed to save dataset natively", e);
+      console.warn('Failed to save dataset natively', e);
     }
 
     populateFieldMapping();
@@ -750,7 +743,6 @@ async function startSending() {
     return;
   }
 
-  isActiveSession = true;
   switchTab('progress');
 }
 
@@ -773,10 +765,8 @@ function updateControlStates(state) {
 function startPolling() {
   // Poll frequently while active, back off when idle to conserve resources
   const ACTIVE_INTERVAL = 2000;
-  const IDLE_INTERVAL = 10000;
 
-  pollingInterval = setInterval(() => {
-    const interval = isActiveSession ? ACTIVE_INTERVAL : IDLE_INTERVAL;
+  setInterval(() => {
     // Simple adaptive: reset the timer based on session state
     void fetchStatus();
   }, ACTIVE_INTERVAL); // always start fast; fetchStatus updates isActiveSession
@@ -794,20 +784,15 @@ async function fetchStatus() {
     // Derive control state purely from SW truth — never set optimistically
     if (stats.scheduledAt && stats.scheduledAt > Date.now()) {
       updateControlStates('scheduled');
-      isActiveSession = true;
     } else if (stats.isProcessing && !stats.isPaused) {
       updateControlStates('running');
-      isActiveSession = true;
     } else if (stats.isPaused) {
       updateControlStates('paused');
-      isActiveSession = true; // still has pending work
     } else if (stats.isStopped) {
       updateControlStates('stopped');
-      isActiveSession = false;
     } else if (!stats.isProcessing && stats.total > 0 && stats.pending === 0 && stats.retry === 0) {
       // All done
       updateControlStates('stopped');
-      isActiveSession = false;
     }
   } catch {
     // Background may be asleep — ignore
@@ -821,7 +806,7 @@ async function loadExistingStatus() {
       updateProgressUI(response.stats, response.queue);
       updateLogsUI(response.logs);
     }
-  } catch (err) {
+  } catch {
     // Ignore initial load errors.
   }
 }
@@ -946,7 +931,7 @@ async function loadSettingsUI() {
     updateValidationState();
     updatePreview();
     updateStepVisibility();
-  } catch (err) {
+  } catch {
     // Use defaults.
   }
 }
@@ -979,7 +964,6 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 // ── Toast notification system ─────────────────────────────────────────────────
-let toastTimer = null;
 
 function initToast() {
   // Toast container is injected if not already in the HTML
